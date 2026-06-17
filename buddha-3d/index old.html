@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Buddha & 13 Chakra Spheres</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0c10;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 20, 30, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 320px;
+            pointer-events: auto;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            font-size: 18px;
+            margin: 0 0 10px 0;
+            color: #ffd700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        p {
+            font-size: 12px;
+            color: #ccc;
+            margin: 0 0 15px 0;
+            line-height: 1.4;
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        select, input[type="range"] {
+            width: 100%;
+            background: #1a1f2c;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 6px;
+            border-radius: 4px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .legend {
+            margin-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .legend-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 6px;
+            color: #aaa;
+        }
+        .legend-item span {
+            color: #ffd700;
+        }
+    </style>
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-container">
+        <h1>Chakra Core 3D</h1>
+        <p>Interactive visualization of the Buddha's core and the 13 Siddham axial spheres.</p>
+        
+        <div class="control-group">
+            <label>Character Render Mode</label>
+            <select id="billboard-mode">
+                <option value="billboard">Face Camera (Billboard)</option>
+                <option value="rotate">Rotate in 3D Space</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Auto-Rotation Speed</label>
+            <input type="range" id="rotation-speed" min="0" max="0.01" step="0.0005" value="0.002">
+        </div>
+
+        <div class="control-group">
+            <label>Core Glow Intensity</label>
+            <input type="range" id="glow-intensity" min="0" max="3" step="0.1" value="1.5">
+        </div>
+
+        <div class="legend">
+            <label>Sphere Coordinates Map</label>
+            <div id="legend-list"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Coordinate & Asset Data Mapping ---
+        // Excel: X = Horizontal, Y = Depth (Front -Y, Back +Y), Z = Vertical (Up +Z, Down -Z)
+        // Three.js: X = Horizontal, Y = Vertical, Z = Depth
+        // Therefore: Three.js X = Excel X, Three.js Y = Excel Z, Three.js Z = Excel Y
+        const sphereData = [
+            { name: "Center", excelPos: [0.0, 0.0, 0.0], chakra: "Solar Plexus", image: "04_CA_Gold.PNG", char: "𑖓", phonetic: "Ca" },
+            { name: "Top Outer", excelPos: [0.0, 0.0, 2.0], chakra: "N/A", image: "08_BA_Gold.PNG", char: "𑖤", phonetic: "Ba" },
+            { name: "Top Inner", excelPos: [0.0, 0.0, 1.0], chakra: "Crown", image: "16_SA_Gold.PNG", char: "𑖭", phonetic: "Sa" },
+            { name: "Bottom Inner", excelPos: [0.0, 0.0, -1.0], chakra: "Root", image: "13_YA_Gold.PNG", char: "𑖧", phonetic: "Ya" },
+            { name: "Bottom Outer", excelPos: [0.0, 0.0, -2.0], chakra: "N/A", image: "09_DDA_Gold.PNG", char: "𑖚", phonetic: "Dda" },
+            { name: "Left Outer", excelPos: [-2.0, 0.0, 0.0], chakra: "N/A", image: "08_BA_Gold.PNG", char: "𑖤", phonetic: "Ba" },
+            { name: "Left Inner", excelPos: [-1.0, 0.0, 0.0], chakra: "N/A", image: "19_THA_Gold.PNG", char: "𑖞", phonetic: "Tha" },
+            { name: "Right Inner", excelPos: [1.0, 0.0, 0.0], chakra: "N/A", image: "21_SVA_Gold.PNG", char: "𑖭𑖿𑖪", phonetic: "Sva" },
+            { name: "Right Outer", excelPos: [2.0, 0.0, 0.0], chakra: "N/A", image: "09_DDA_Gold.PNG", char: "𑖚", phonetic: "Dda" },
+            { name: "Back Outer", excelPos: [0.0, 2.0, 0.0], chakra: "N/A", image: "09_DDA_Gold.PNG", char: "𑖚", phonetic: "Dda" },
+            { name: "Back Inner", excelPos: [0.0, 1.0, 0.0], chakra: "N/A", image: "25_KSA_Gold.PNG", char: "𑖎𑖿𑖬", phonetic: "Ksa" },
+            { name: "Front Inner", excelPos: [0.0, -1.0, 0.0], chakra: "N/A", image: "18_GA_Gold.PNG", char: "𑖐", phonetic: "Ga" },
+            { name: "Front Outer", excelPos: [0.0, -2.0, 0.0], chakra: "N/A", image: "08_BA_Gold.PNG", char: "𑖤", phonetic: "Ba" }
+        ];
+
+        // --- 2. Setup Scene, Camera, and Renderer ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a0c10, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(4, 3, 6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 15;
+        controls.minDistance = 2;
+
+        // --- 3. Procedural Studio Environment Map ---
+        // Generates realistic studio reflections on the glass surfaces
+        function createStudioEnvMap() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            
+            // Soft studio ambient gradient
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, '#1a2230');
+            grad.addColorStop(0.5, '#0a0d14');
+            grad.addColorStop(1, '#05070a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Studio softbox light reflections
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(40, 20, 30, 40);
+            ctx.fillRect(180, 40, 40, 30);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            return texture;
+        }
+        const envMap = createStudioEnvMap();
+        scene.environment = envMap;
+
+        // --- 4. Studio Lighting ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xfff5e6, 2.0);
+        keyLight.position.set(5, 8, 5);
+        keyLight.castShadow = true;
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xdbe9ff, 1.0);
+        fillLight.position.set(-5, 3, -5);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        rimLight.position.set(0, -5, 0);
+        scene.add(rimLight);
+
+        // Core glowing point light at (0,0,0)
+        const coreLight = new THREE.PointLight(0xffaa00, 1.5, 5);
+        coreLight.position.set(0, 0, 0);
+        scene.add(coreLight);
+
+        // --- 5. Materials Setup ---
+        // Beautiful organic, glassy, transparent yellow body
+        const transparentYellowGlass = new THREE.MeshPhysicalMaterial({
+            color: 0xffb90f,
+            roughness: 0.1,
+            metalness: 0.1,
+            transmission: 0.95,
+            ior: 1.45,
+            thickness: 1.5,
+            transparent: true,
+            opacity: 1.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        // Clear Glass for the Outer Bubble and the 13 small spheres
+        const clearBubbleGlass = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            roughness: 0.05,
+            metalness: 0.1,
+            transmission: 0.98,
+            ior: 1.52,
+            thickness: 0.3,
+            transparent: true,
+            opacity: 1.0,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        // Metallic Gold for any structural meshes
+        const metallicGold = new THREE.MeshPhysicalMaterial({
+            color: 0xffd700,
+            roughness: 0.15,
+            metalness: 1.0,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1
+        });
+
+        // --- 6. Creating the Outer Bubble ---
+        // Outer bubble intersects with the outer spheres (which are centered at distance 2.0 with radius 0.4)
+        // A bubble radius of 2.2 perfectly slices through the outer spheres.
+        const outerBubbleGeo = new THREE.SphereGeometry(2.2, 64, 64);
+        const outerBubble = new THREE.Mesh(outerBubbleGeo, clearBubbleGlass);
+        scene.add(outerBubble);
+
+        // --- 7. Creating the Buddha Statue (Procedural Fallback & GLTF Loader) ---
+        const buddhaGroup = new THREE.Group();
+        scene.add(buddhaGroup);
+
+        // Create an elegant, abstract geometric meditating Buddha as an instant fallback
+        function createProceduralBuddha() {
+            const group = new THREE.Group();
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.28, 32, 32);
+            const head = new THREE.Mesh(headGeo, transparentYellowGlass);
+            head.position.y = 0.55;
+            group.add(head);
+
+            // Ushnisha (Topknot)
+            const ushnishaGeo = new THREE.SphereGeometry(0.1, 16, 16);
+            const ushnisha = new THREE.Mesh(ushnishaGeo, transparentYellowGlass);
+            ushnisha.position.y = 0.85;
+            group.add(ushnisha);
+
+            // Torso / Robe
+            const torsoGeo = new THREE.CylinderGeometry(0.12, 0.32, 0.7, 32);
+            const torso = new THREE.Mesh(torsoGeo, transparentYellowGlass);
+            torso.position.y = 0.1;
+            group.add(torso);
+
+            // Meditating Crossed Legs (Torus)
+            const legsGeo = new THREE.TorusGeometry(0.35, 0.14, 16, 100);
+            const legs = new THREE.Mesh(legsGeo, transparentYellowGlass);
+            legs.rotation.x = Math.PI / 2;
+            legs.position.y = -0.28;
+            group.add(legs);
+
+            // Abstract Meditating Hands
+            const handGeo = new THREE.SphereGeometry(0.08, 16, 16);
+            const hands = new THREE.Mesh(handGeo, transparentYellowGlass);
+            hands.position.set(0, -0.15, 0.18);
+            group.add(hands);
+
+            // Align Buddha's heart center exactly at (0, 0, 0)
+            group.position.set(0, -0.1, 0); 
+            return group;
+        }
+
+        let buddhaMesh = createProceduralBuddha();
+        buddhaGroup.add(buddhaMesh);
+
+        // GLTF Loader Setup (Uncomment and set path to load your actual GLTF model)
+        
+        const loader = new THREE.GLTFLoader();
+        loader.load('Buddha_text_data.gltf', function(gltf) {
+            buddhaGroup.remove(buddhaMesh); // Remove procedural fallback
+            buddhaMesh = gltf.scene;
+            
+            // Apply organic transparent yellow material to all meshes in the loaded model
+            buddhaMesh.traverse((node) => {
+                if (node.isMesh) {
+                    node.material = transparentYellowGlass;
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+            
+            // Adjust scale and position so core/heart aligns exactly with (0,0,0)
+            buddhaMesh.scale.set(1, 1, 1); 
+            buddhaMesh.position.set(0, -0.2, 0); 
+            
+            buddhaGroup.add(buddhaMesh);
+        });
+        
+
+        // --- 8. Creating the 13 Spheres and Siddham Characters ---
+        const spheresGroup = new THREE.Group();
+        scene.add(spheresGroup);
+
+        const characterPlanes = []; // Store planes for animation and billboarding
+        const textureLoader = new THREE.TextureLoader();
+
+        // Helper to generate a golden Siddham glyph on canvas if file loading fails
+        function createFallbackGlyphTexture(char, phonetic) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Draw a beautiful glowing gold glyph
+            ctx.clearRect(0, 0, 512, 512);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Outer golden glow
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 220px sans-serif';
+            ctx.fillText(char, 256, 230);
+
+            // Phonetic text label below
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#ffaa00';
+            ctx.font = '600 45px "Segoe UI"';
+            ctx.fillText(phonetic.toUpperCase(), 256, 410);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+        }
+
+        // Generate coordinates list in the UI legend panel
+        const legendList = document.getElementById('legend-list');
+
+        sphereData.forEach((data, index) => {
+            // Coordinate mapping: Excel -> Three.js
+            const x = data.excelPos[0];
+            const y = data.excelPos[2]; // Excel Z becomes Three.js Y
+            const z = data.excelPos[1]; // Excel Y becomes Three.js Z
+            const pos = new THREE.Vector3(x, y, z);
+
+            // 1. Create Small Glass Sphere (Radius 0.38 fits inside 0.4 spacing without collision)
+            const sphereGeo = new THREE.SphereGeometry(0.38, 32, 32);
+            const sphere = new THREE.Mesh(sphereGeo, clearBubbleGlass);
+            sphere.position.copy(pos);
+            spheresGroup.add(sphere);
+
+            // 2. Create the Siddham Character Texture
+            // Tries loading your transparent PNG file first, falls back to the generated canvas glyph
+            let characterTex = createFallbackGlyphTexture(data.char, data.phonetic);
+            
+            textureLoader.load(
+                data.image,
+                (loadedTex) => {
+                    loadedTex.colorSpace = THREE.SRGBColorSpace;
+                    charMaterial.map = loadedTex;
+                    charMaterial.needsUpdate = true;
+                },
+                undefined,
+                (err) => {
+                    console.warn(`Could not load texture "${data.image}". Using high-fidelity procedural gold glyph fallback.`);
+                }
+            );
+
+            // 3. Create Plane to host the 3D Character (Sized to fit perfectly within the 0.38 radius sphere)
+            const planeSize = 0.55; 
+            const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+            const charMaterial = new THREE.MeshBasicMaterial({
+                map: characterTex,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const plane = new THREE.Mesh(planeGeo, charMaterial);
+            plane.position.copy(pos);
+            spheresGroup.add(plane);
+
+            // Save reference for controls and animations
+            characterPlanes.push({
+                mesh: plane,
+                initialPos: pos.clone(),
+                offset: Math.random() * Math.PI * 2 // Float offset
+            });
+
+            // Populate UI Legend
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.innerHTML = `
+                <div>${data.name} <span>(${data.phonetic})</span></div>
+                <div>(${x.toFixed(1)}, ${data.excelPos[1].toFixed(1)}, ${data.excelPos[2].toFixed(1)})</div>
+            `;
+            legendList.appendChild(item);
+        });
+
+        // --- 9. Base Grid/Anchor ---
+        const gridHelper = new THREE.GridHelper(8, 32, 0xffd700, 0x222d3d);
+        gridHelper.position.y = -2.3;
+        scene.add(gridHelper);
+
+        // --- 10. UI & Interaction Setup ---
+        const billboardModeSelect = document.getElementById('billboard-mode');
+        const rotationSpeedInput = document.getElementById('rotation-speed');
+        const glowIntensityInput = document.getElementById('glow-intensity');
+
+        // Window Resizing
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 11. Animation Loop ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const elapsedTime = clock.getElapsedTime();
+            const rotSpeed = parseFloat(rotationSpeedInput.value);
+            const glowVal = parseFloat(glowIntensityInput.value);
+
+            // Apply auto-rotation to the camera scene group
+            spheresGroup.rotation.y += rotSpeed;
+            buddhaGroup.rotation.y += rotSpeed * 0.5;
+
+            // Core Glow update
+            coreLight.intensity = (Math.sin(elapsedTime * 2) * 0.3 + 1.0) * glowVal;
+
+            // Animate and align individual Siddham character planes
+            characterPlanes.forEach((item) => {
+                // Subtle floating/breathing animation inside the sphere
+                const floatOffset = Math.sin(elapsedTime * 1.5 + item.offset) * 0.02;
+                item.mesh.position.y = item.initialPos.y + floatOffset;
+
+                if (billboardModeSelect.value === 'billboard') {
+                    // Force planes to face camera directly (Billboarding)
+                    item.mesh.quaternion.copy(camera.quaternion);
+                } else {
+                    // Rotate the plane on its own Y-axis in 3D space
+                    item.mesh.rotation.y = elapsedTime * 0.5 + item.offset;
+                    item.mesh.rotation.x = 0;
+                    item.mesh.rotation.z = 0;
+                }
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
